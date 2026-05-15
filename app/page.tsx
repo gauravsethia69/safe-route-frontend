@@ -3,7 +3,7 @@
 import axios from "axios";
 import dynamic from "next/dynamic";
 import { motion } from "framer-motion";
-import { Shield, AlertTriangle, LocateFixed, Flame } from "lucide-react";
+import { Shield, AlertTriangle, LocateFixed, Flame, MapPin } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import toast, { Toaster } from "react-hot-toast";
 
@@ -17,6 +17,7 @@ import {
 } from "firebase/auth";
 
 import { auth } from "@/lib/firebase";
+
 const SafeRoutePlanner = dynamic(
   () => import("@/components/SafeRoutePlanner"),
   {
@@ -44,8 +45,7 @@ export default function Home() {
   const [lat, setLat] = useState<number | null>(null);
   const [lon, setLon] = useState<number | null>(null);
 
-  const [manualLat, setManualLat] = useState("");
-  const [manualLon, setManualLon] = useState("");
+  const [locationName, setLocationName] = useState("");
 
   const [risk, setRisk] = useState<any>(null);
   const [incidents, setIncidents] = useState<any[]>([]);
@@ -53,18 +53,21 @@ export default function Home() {
 
   const [loading, setLoading] = useState(false);
   const [heatmapLoading, setHeatmapLoading] = useState(false);
+  const [searchingLocation, setSearchingLocation] = useState(false);
 
   const [user, setUser] = useState<User | null>(null);
   const [phone, setPhone] = useState("");
   const [otp, setOtp] = useState("");
   const [otpSent, setOtpSent] = useState(false);
-  const [confirmation, setConfirmation] = useState<ConfirmationResult | null>(null);
+  const [confirmation, setConfirmation] = useState<ConfirmationResult | null>(
+    null
+  );
   const [sendingOtp, setSendingOtp] = useState(false);
   const [verifyingOtp, setVerifyingOtp] = useState(false);
 
   const recaptchaContainerRef = useRef<HTMLDivElement>(null);
 
-  const API = process.env.NEXT_PUBLIC_API_URL
+  const API = process.env.NEXT_PUBLIC_API_URL;
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
@@ -247,6 +250,40 @@ export default function Home() {
     }
   };
 
+  const searchLocationByName = async () => {
+    if (!locationName.trim()) {
+      toast.error("Enter a location name");
+      return;
+    }
+
+    try {
+      setSearchingLocation(true);
+
+      const res = await axios.get(
+        `${API}/geocode?location=${encodeURIComponent(locationName)}`
+      );
+
+      const latitude = res.data.latitude;
+      const longitude = res.data.longitude;
+
+      if (latitude === undefined || longitude === undefined) {
+        toast.error("Invalid location response from backend");
+        return;
+      }
+
+      await fetchData(latitude, longitude);
+
+      toast.success(`Showing safety data for ${locationName}`);
+    } catch (error: any) {
+      console.error("searchLocationByName error:", error);
+      toast.error(
+        error.response?.data?.detail || "Location not found. Try adding city name."
+      );
+    } finally {
+      setSearchingLocation(false);
+    }
+  };
+
   const reportIncident = async (crimeType: string) => {
     if (!auth.currentUser) {
       toast.error("Please login first to report an incident");
@@ -417,40 +454,24 @@ export default function Home() {
 
             <input
               type="text"
-              placeholder="Latitude"
-              value={manualLat}
-              onChange={(e) => setManualLat(e.target.value)}
-              className="bg-zinc-900 border border-white/10 rounded-2xl px-4 py-3 outline-none w-36"
-            />
-
-            <input
-              type="text"
-              placeholder="Longitude"
-              value={manualLon}
-              onChange={(e) => setManualLon(e.target.value)}
-              className="bg-zinc-900 border border-white/10 rounded-2xl px-4 py-3 outline-none w-36"
+              placeholder="Enter location name, e.g. Vijay Nagar"
+              value={locationName}
+              onChange={(e) => setLocationName(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") {
+                  searchLocationByName();
+                }
+              }}
+              className="bg-zinc-900 border border-white/10 rounded-2xl px-4 py-3 outline-none w-80"
             />
 
             <button
-              onClick={() => {
-                if (!manualLat || !manualLon) {
-                  toast.error("Enter both latitude and longitude");
-                  return;
-                }
-
-                const latitude = Number(manualLat);
-                const longitude = Number(manualLon);
-
-                if (Number.isNaN(latitude) || Number.isNaN(longitude)) {
-                  toast.error("Enter valid numeric coordinates");
-                  return;
-                }
-
-                fetchData(latitude, longitude);
-              }}
-              className="bg-purple-600 px-5 py-3 rounded-2xl hover:bg-purple-500 transition-all font-semibold"
+              onClick={searchLocationByName}
+              disabled={searchingLocation}
+              className="bg-purple-600 px-5 py-3 rounded-2xl hover:bg-purple-500 transition-all font-semibold disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
             >
-              Search Location
+              <MapPin size={18} />
+              {searchingLocation ? "Searching…" : "Search Location"}
             </button>
           </div>
         </motion.div>
