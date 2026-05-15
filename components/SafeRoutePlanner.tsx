@@ -38,6 +38,7 @@ function FitRoute({ coordinates }: { coordinates: [number, number][] }) {
 
   if (coordinates.length > 0) {
     const bounds = L.latLngBounds(coordinates);
+
     map.fitBounds(bounds, {
       padding: [40, 40],
     });
@@ -53,12 +54,16 @@ export default function SafeRoutePlanner() {
   const [dropLocation, setDropLocation] = useState("");
 
   const [route, setRoute] = useState<SafeRoute | null>(null);
+
   const [loading, setLoading] = useState(false);
+
   const [userPosition, setUserPosition] = useState<[number, number] | null>(
     null
   );
 
-  const geocodeLocation = async (location: string): Promise<GeoPoint> => {
+  const geocodeLocation = async (
+    location: string
+  ): Promise<GeoPoint> => {
     const res = await axios.get(
       `${API}/geocode?location=${encodeURIComponent(location)}`
     );
@@ -77,25 +82,47 @@ export default function SafeRoutePlanner() {
 
     try {
       setLoading(true);
+
       setRoute(null);
 
-      const pickup = await geocodeLocation(pickupLocation);
-      const drop = await geocodeLocation(dropLocation);
-
-      const res = await axios.post(`${API}/safe-route`, {
-        pickup_lat: pickup.lat,
-        pickup_lng: pickup.lng,
-        drop_lat: drop.lat,
-        drop_lng: drop.lng,
+      toast.loading("Finding safest route...", {
+        id: "route",
       });
 
-      setRoute(res.data.safest_route);
-      toast.success("Safest route found");
+      // Convert names → coordinates
+      const pickup = await geocodeLocation(pickupLocation);
+
+      const drop = await geocodeLocation(dropLocation);
+
+      // Call backend
+      const res = await axios.post(
+        `${API}/safe-route`,
+        {
+          start_lat: pickup.lat,
+          start_lon: pickup.lng,
+          end_lat: drop.lat,
+          end_lon: drop.lng,
+        }
+      );
+
+      const safestRoute =
+        res.data.safest_route || res.data;
+
+      setRoute(safestRoute);
+
+      toast.success("Safest route generated", {
+        id: "route",
+      });
+
     } catch (error: any) {
       console.error("findSafeRoute error:", error);
+
       toast.error(
         error.response?.data?.detail ||
-          "Failed to find safest route. Try adding city name."
+          "Failed to generate route",
+        {
+          id: "route",
+        }
       );
     } finally {
       setLoading(false);
@@ -128,14 +155,18 @@ export default function SafeRoutePlanner() {
 
   return (
     <div className="mt-8 bg-white/5 border border-white/10 rounded-3xl p-8 backdrop-blur-xl">
-      <h2 className="text-2xl font-bold mb-5">Safest Route Navigation</h2>
+      <h2 className="text-2xl font-bold mb-5">
+        Safest Route Navigation
+      </h2>
 
       <div className="grid md:grid-cols-2 gap-3 mb-5">
         <input
           type="text"
           placeholder="Pickup location, e.g. Vijay Nagar"
           value={pickupLocation}
-          onChange={(e) => setPickupLocation(e.target.value)}
+          onChange={(e) =>
+            setPickupLocation(e.target.value)
+          }
           className="bg-zinc-900 border border-white/10 rounded-2xl px-4 py-3 outline-none"
         />
 
@@ -143,7 +174,9 @@ export default function SafeRoutePlanner() {
           type="text"
           placeholder="Drop location, e.g. Rajwada"
           value={dropLocation}
-          onChange={(e) => setDropLocation(e.target.value)}
+          onChange={(e) =>
+            setDropLocation(e.target.value)
+          }
           onKeyDown={(e) => {
             if (e.key === "Enter") {
               findSafeRoute();
@@ -183,14 +216,23 @@ export default function SafeRoutePlanner() {
 
           {route && (
             <>
-              <Polyline positions={route.coordinates} weight={6} />
+              <Polyline
+                positions={route.coordinates}
+                weight={6}
+              />
 
               <Marker position={route.coordinates[0]}>
-                <Popup>Pickup</Popup>
+                <Popup>Pickup Location</Popup>
               </Marker>
 
-              <Marker position={route.coordinates[route.coordinates.length - 1]}>
-                <Popup>Drop</Popup>
+              <Marker
+                position={
+                  route.coordinates[
+                    route.coordinates.length - 1
+                  ]
+                }
+              >
+                <Popup>Destination</Popup>
               </Marker>
 
               <FitRoute coordinates={route.coordinates} />
@@ -199,7 +241,7 @@ export default function SafeRoutePlanner() {
 
           {userPosition && (
             <Marker position={userPosition}>
-              <Popup>Your live location</Popup>
+              <Popup>Your Live Location</Popup>
             </Marker>
           )}
         </MapContainer>
@@ -209,19 +251,29 @@ export default function SafeRoutePlanner() {
         <div className="mt-5 grid lg:grid-cols-3 gap-5">
           <div className="bg-black/30 rounded-2xl p-5 border border-white/10">
             <p className="text-gray-400">Distance</p>
-            <h3 className="text-2xl font-bold">{route.distance_km} km</h3>
+
+            <h3 className="text-2xl font-bold">
+              {route.distance_km} km
+            </h3>
           </div>
 
           <div className="bg-black/30 rounded-2xl p-5 border border-white/10">
             <p className="text-gray-400">Duration</p>
-            <h3 className="text-2xl font-bold">{route.duration_min} min</h3>
+
+            <h3 className="text-2xl font-bold">
+              {route.duration_min} min
+            </h3>
           </div>
 
           <div className="bg-black/30 rounded-2xl p-5 border border-white/10">
-            <p className="text-gray-400">Safety Score</p>
+            <p className="text-gray-400">
+              Safety Score
+            </p>
+
             <h3 className="text-2xl font-bold text-green-400">
               {route.safety_score}/100
             </h3>
+
             <p className="text-sm text-red-300">
               Nearby crimes: {route.nearby_crimes}
             </p>
@@ -231,10 +283,12 @@ export default function SafeRoutePlanner() {
 
       {route && (
         <div className="mt-5 bg-black/30 rounded-2xl p-5 border border-white/10 max-h-80 overflow-y-auto">
-          <h3 className="text-xl font-bold mb-4">Directions</h3>
+          <h3 className="text-xl font-bold mb-4">
+            Directions
+          </h3>
 
           <div className="space-y-3">
-            {route.directions.map((step, index) => (
+            {route.directions?.map((step, index) => (
               <div
                 key={index}
                 className="border-b border-white/10 pb-3 text-gray-300"
@@ -242,6 +296,7 @@ export default function SafeRoutePlanner() {
                 <p className="font-semibold text-white">
                   {index + 1}. {step.instruction}
                 </p>
+
                 <p className="text-sm text-gray-400">
                   {step.distance} km • {step.duration} min
                 </p>
