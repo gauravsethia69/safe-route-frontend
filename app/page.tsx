@@ -17,7 +17,12 @@ import {
 } from "firebase/auth";
 
 import { auth } from "@/lib/firebase";
-import SafeRoutePlanner from "@/components/SafeRoutePlanner";
+const SafeRoutePlanner = dynamic(
+  () => import("@/components/SafeRoutePlanner"),
+  {
+    ssr: false,
+  }
+);
 
 const CrimeHeatMap = dynamic(() => import("@/components/CrimeHeatMap"), {
   ssr: false,
