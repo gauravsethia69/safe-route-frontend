@@ -28,6 +28,11 @@ type SafeRoute = {
   directions: Direction[];
 };
 
+type GeoPoint = {
+  lat: number;
+  lng: number;
+};
+
 function FitRoute({ coordinates }: { coordinates: [number, number][] }) {
   const map = useMap();
 
@@ -42,12 +47,10 @@ function FitRoute({ coordinates }: { coordinates: [number, number][] }) {
 }
 
 export default function SafeRoutePlanner() {
-  const API = process.env.NEXT_PUBLIC_API_URL
+  const API = process.env.NEXT_PUBLIC_API_URL;
 
-  const [pickupLat, setPickupLat] = useState("");
-  const [pickupLng, setPickupLng] = useState("");
-  const [dropLat, setDropLat] = useState("");
-  const [dropLng, setDropLng] = useState("");
+  const [pickupLocation, setPickupLocation] = useState("");
+  const [dropLocation, setDropLocation] = useState("");
 
   const [route, setRoute] = useState<SafeRoute | null>(null);
   const [loading, setLoading] = useState(false);
@@ -55,27 +58,45 @@ export default function SafeRoutePlanner() {
     null
   );
 
+  const geocodeLocation = async (location: string): Promise<GeoPoint> => {
+    const res = await axios.get(
+      `${API}/geocode?location=${encodeURIComponent(location)}`
+    );
+
+    return {
+      lat: res.data.latitude,
+      lng: res.data.longitude,
+    };
+  };
+
   const findSafeRoute = async () => {
-    if (!pickupLat || !pickupLng || !dropLat || !dropLng) {
-      toast.error("Enter pickup and drop coordinates");
+    if (!pickupLocation.trim() || !dropLocation.trim()) {
+      toast.error("Enter pickup and drop locations");
       return;
     }
 
     try {
       setLoading(true);
+      setRoute(null);
+
+      const pickup = await geocodeLocation(pickupLocation);
+      const drop = await geocodeLocation(dropLocation);
 
       const res = await axios.post(`${API}/safe-route`, {
-        pickup_lat: Number(pickupLat),
-        pickup_lng: Number(pickupLng),
-        drop_lat: Number(dropLat),
-        drop_lng: Number(dropLng),
+        pickup_lat: pickup.lat,
+        pickup_lng: pickup.lng,
+        drop_lat: drop.lat,
+        drop_lng: drop.lng,
       });
 
       setRoute(res.data.safest_route);
       toast.success("Safest route found");
-    } catch (error) {
-      console.error(error);
-      toast.error("Failed to find safest route");
+    } catch (error: any) {
+      console.error("findSafeRoute error:", error);
+      toast.error(
+        error.response?.data?.detail ||
+          "Failed to find safest route. Try adding city name."
+      );
     } finally {
       setLoading(false);
     }
@@ -109,36 +130,25 @@ export default function SafeRoutePlanner() {
     <div className="mt-8 bg-white/5 border border-white/10 rounded-3xl p-8 backdrop-blur-xl">
       <h2 className="text-2xl font-bold mb-5">Safest Route Navigation</h2>
 
-      <div className="grid md:grid-cols-4 gap-3 mb-5">
+      <div className="grid md:grid-cols-2 gap-3 mb-5">
         <input
           type="text"
-          placeholder="Pickup Lat"
-          value={pickupLat}
-          onChange={(e) => setPickupLat(e.target.value)}
+          placeholder="Pickup location, e.g. Vijay Nagar"
+          value={pickupLocation}
+          onChange={(e) => setPickupLocation(e.target.value)}
           className="bg-zinc-900 border border-white/10 rounded-2xl px-4 py-3 outline-none"
         />
 
         <input
           type="text"
-          placeholder="Pickup Lng"
-          value={pickupLng}
-          onChange={(e) => setPickupLng(e.target.value)}
-          className="bg-zinc-900 border border-white/10 rounded-2xl px-4 py-3 outline-none"
-        />
-
-        <input
-          type="text"
-          placeholder="Drop Lat"
-          value={dropLat}
-          onChange={(e) => setDropLat(e.target.value)}
-          className="bg-zinc-900 border border-white/10 rounded-2xl px-4 py-3 outline-none"
-        />
-
-        <input
-          type="text"
-          placeholder="Drop Lng"
-          value={dropLng}
-          onChange={(e) => setDropLng(e.target.value)}
+          placeholder="Drop location, e.g. Rajwada"
+          value={dropLocation}
+          onChange={(e) => setDropLocation(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") {
+              findSafeRoute();
+            }
+          }}
           className="bg-zinc-900 border border-white/10 rounded-2xl px-4 py-3 outline-none"
         />
       </div>
@@ -173,10 +183,7 @@ export default function SafeRoutePlanner() {
 
           {route && (
             <>
-              <Polyline
-                positions={route.coordinates}
-                weight={6}
-              />
+              <Polyline positions={route.coordinates} weight={6} />
 
               <Marker position={route.coordinates[0]}>
                 <Popup>Pickup</Popup>
